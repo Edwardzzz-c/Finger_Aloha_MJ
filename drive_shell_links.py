@@ -10,7 +10,7 @@ import time
 # -------------------------  USER SETTINGS  ---------------------------
 # ---------------------------------------------------------------------
 MODEL_XML = "index_finger.xml"      
-CSV_FILE  = "finger_kinematics_data/finger_calibration_2.csv" 
+CSV_FILE  = "finger_kinematics_data/new_.csv" 
 BODY_MAP  = {                        
     "trakstar0": "shell_dist",
     "trakstar1": "shell_mid",
@@ -96,9 +96,14 @@ for col in BODY_MAP:
 # ---------------------------------------------------------------------
 # ---------------------  Transform & Translation ----------------------
 # ---------------------------------------------------------------------
-R_corr = R.from_euler("z", -90, degrees=True)
+# Katelyn's transform
+"""R_corr = R.from_euler("z", -90, degrees=True)
 SCALE  = 1.0            
-OFFSET = np.array([-0.03, -0.22, 0])   
+OFFSET = np.array([-0.03, -0.22, 0])""" 
+# Edward's transform
+R_corr = R.from_euler("y", 180, degrees=True)
+SCALE  = 1.0            
+OFFSET = np.array([-0.195, 0.078, -0.015])  
 
 for col in poses:
     # transform every position
@@ -143,8 +148,8 @@ while viewer.is_running() and row < len(df):
         w_cur = data.cvel[body_id, 3:]
 
         # Pd controller values
-        MAX_TORQUE = 5e-2
-        MAX_FORCE = 5e-2
+        MAX_TORQUE = 8e-2
+        MAX_FORCE = 8e-2
         #DAMPENING = 0.0005
         
         # Calculate force/torque to apply to bodies
@@ -182,6 +187,6 @@ while viewer.is_running() and row < len(df):
         sim_t += model.opt.timestep
 
     viewer.sync()
-    time.sleep(0.01)
+    time.sleep(0.001)
 
 viewer.close()

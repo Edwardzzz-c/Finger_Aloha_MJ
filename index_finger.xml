@@ -176,6 +176,10 @@
             solref="0.002 2" solimp="0.9 0.95 0.002" />
         <weld name="w2" body1="proxi_exo2" body2="shell_mid"
             solref="0.002 2" solimp="0.9 0.95 0.002" />
+        <!-- <weld name="w3" body1="shell_mid" body2="shell_dist"
+            solref="0.002 2" solimp="0.9 0.95 0.002" /> -->
+        <!-- <weld name="w4" body1="shell_prox" body2="shell_mid"
+            solref="0.002 2" solimp="0.9 0.95 0.002" /> -->
     </equality>
 
     <!--––––

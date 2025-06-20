@@ -9,9 +9,12 @@
     <!--––––
     visual assets ––––-->
     <asset>
-        <mesh name="base_link_mesh" file="meshes/base_link.STL" />
-        <mesh name="proximal_link_mesh" file="meshes/proximal_link.STL" />
-        <mesh name="distal_link_mesh" file="meshes/distal_link.STL" />
+        <mesh name="base_link_mesh"
+            file="/Users/cheng.zhang/Desktop/Finger_Aloha_MJ/meshes/base_link.STL" />
+        <mesh name="proximal_link_mesh"
+            file="/Users/cheng.zhang/Desktop/Finger_Aloha_MJ/meshes/proximal_link.STL" />
+        <mesh name="distal_link_mesh"
+            file="/Users/cheng.zhang/Desktop/Finger_Aloha_MJ/meshes/distal_link.STL" />
         <material name="finger_grey" rgba=".79 .82 .93 1" />
 
         <!--Fancy
@@ -52,7 +55,7 @@
             <!-- proximal phalanx -->
             <body name="proximal_link">
                 <joint name="proximal_joint" pos="0 0 0"
-                    axis="0 0 1" range="-90 90" />
+                    axis="0 0 1" range="0 90" />
 
                 <inertial pos="0.030014 -0.0008083 0.00066078"
                     mass="0.024623"
@@ -66,7 +69,7 @@
                         rgba="0 0 1 1" />
 
                     <body name="proxi_exo2" pos="-0.012 0 0.005">
-                        <joint name="hinge2.1" type="hinge" pos="0 0 0" axis="0 1 0" range="-90 90" />
+                        <joint name="hinge2.1" type="hinge" pos="0 0 0" axis="0 1 0" range="0 90" />
                         <geom type="capsule"
                             fromto="0 0 0   0.013 0 .048"
                             size="0.003"
@@ -76,7 +79,7 @@
                 <!-- distal phalanx -->
                 <body name="distal_link" pos="0.04883 0 0">
                     <joint name="distal_joint" pos="0 0 0"
-                        axis="0 0 1" range="-90 90" />
+                        axis="0 0 1" range="0 90" />
 
                     <inertial pos="0.025976 -0.00040286 0.00046448"
                         mass="0.030476"
@@ -90,16 +93,16 @@
                             rgba="0 0 1 1" />
                         <body name="distal_exo2" pos="0.014 0 .013">
                             <joint name="hinge1.1" type="hinge" pos="0 0 0"
-                                axis="0 1 0" range="-90 90" />
+                                axis="0 1 0" range="0 360" />
                             <geom type="capsule"
-                                fromto="0 0 0   -0.015 0 .1"
+                                fromto="0 0 0   -0.01 0 .075"
                                 size="0.003"
                                 rgba="0 0 1 1" />
-                            <body name="distal_exo3" pos="-0.015 0 .1">
+                            <body name="distal_exo3" pos="-0.01 0 .075">
                                 <joint name="hinge1.2" type="hinge" pos="0 0 0"
-                                    axis="0 1 0" range="-90 90" />
+                                    axis="0 1 0" range="0 360" />
                                 <geom type="capsule"
-                                    fromto="0 0 0   -0.007 0 -.05"
+                                    fromto="0 0 0   -0.007 0 -.025"
                                     size="0.003"
                                     rgba="0 0 1 1" />
                             </body>
@@ -163,7 +166,6 @@
         <light name="fill" pos="3 3 2" dir="-1 -1 -0.5" directional="true"
             diffuse="0.3 0.3 0.3" specular="0.1 0.1 0.1" />
 
-
     </worldbody>
 
     <contact>
@@ -172,14 +174,14 @@
     </contact>
 
     <equality>
-        <weld name="w1" body1="distal_exo3" body2="shell_dist"
+        <!-- <weld name="w1" body1="distal_exo3" body2="shell_dist"
+            solref="0.003 2" solimp="0.9 0.95 0.002" /> -->
+        <!-- <weld name="w2" body1="proxi_exo2" body2="shell_mid"
+            solref="0.003 2" solimp="0.9 0.95 0.002" /> -->
+        <weld name="w3" body1="shell_mid" body2="shell_dist"
             solref="0.002 2" solimp="0.9 0.95 0.002" />
-        <weld name="w2" body1="proxi_exo2" body2="shell_mid"
+        <weld name="w4" body1="shell_prox" body2="shell_mid"
             solref="0.002 2" solimp="0.9 0.95 0.002" />
-        <!-- <weld name="w3" body1="shell_mid" body2="shell_dist"
-            solref="0.002 2" solimp="0.9 0.95 0.002" /> -->
-        <!-- <weld name="w4" body1="shell_prox" body2="shell_mid"
-            solref="0.002 2" solimp="0.9 0.95 0.002" /> -->
     </equality>
 
     <!--––––

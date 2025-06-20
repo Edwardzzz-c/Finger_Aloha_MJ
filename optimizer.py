@@ -1,11 +1,11 @@
 import re
 import mujoco
-import mujoco.viewer
 import numpy as np
 import pandas as pd
 from scipy.spatial.transform import Rotation as R
-import time
-import optimizer
+from optimizer_helpers import get_sim_prop, simulate_with_new_properties
+from dm_control import mjcf
+
 
 # ---------------------------------------------------------------------
 # -------------------------  USER SETTINGS  ---------------------------
@@ -59,18 +59,12 @@ def _parse_pose_block(cell: str):
     pos = np.array([tx, ty, tz], dtype=float)
     return pos, quat
 
-
-def quat_err(qd, qc):
-    """axis-angle error (body frame) that rotates qc → qd."""
-    return (R.from_quat(qc).inv() * R.from_quat(qd)).as_rotvec()
-
-
 # ---------------------------------------------------------------------
 # --------------------  LOAD MODEL, DATA, CSV  ------------------------
 # ---------------------------------------------------------------------
 model = mujoco.MjModel.from_xml_path(MODEL_XML)
 data  = mujoco.MjData(model)
-mujoco.mj_forward(model, data)   
+  
 # Map body IDs once for speed
 BIDS = {col: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body)
         for col, body in BODY_MAP.items()}
@@ -113,6 +107,22 @@ for col in poses:
         for q in poses[col]["quat"]
     ]
 
+def set_body_pose(model, data, body_id, p_xyz, q_xyzw):
+    """
+    p_xyz  : (3,) world position  [x y z]
+    q_xyzw : (4,) world quaternion (x y z w)
+
+    """
+    joint_adr   = model.body_jntadr[body_id]      
+    qpos_adr   = model.jnt_qposadr[joint_adr]         
+
+    # Reorder to wxyz
+    qwxyz = np.empty(4)
+    qwxyz[0] = q_xyzw[3]
+    qwxyz[1:] = q_xyzw[:3]
+
+    data.qpos[qpos_adr     : qpos_adr+3] = p_xyz      # x, y, z
+    data.qpos[qpos_adr+3   : qpos_adr+7] = qwxyz      # w, x, y, z
 # ---------------------------------------------------------------------
 # ----------------------------  SIM LOOP  -----------------------------
 # ---------------------------------------------------------------------
@@ -121,9 +131,7 @@ sim_t = 0.0
 F_cmd = {}
 T_cmd = {}
 
-def simulate_error(model, data, KP_POS=8e-3, KP_ROT=8e-3):
-    """Run the replay once (50 internal sub-steps per video frame) and
-       return total position-plus-orientation tracking error."""
+def simulate_error(model, data):
 
     pos_err_sum, rot_err_sum = 0.0, 0.0
     row, sim_t = 0, 0.0
@@ -131,63 +139,115 @@ def simulate_error(model, data, KP_POS=8e-3, KP_ROT=8e-3):
     while row < len(df):
         if sim_t >= time_series[row]:
             row += 1
-        tgt = row - 1
+        tgt_row = row - 1                      
 
-        # --------- compute forces / torques for each body ---------
-        data.xfrc_applied[:] = 0.0
-        for col, bid in BIDS.items():
-            p_des = poses[col]["pos"][tgt]
-            q_des = poses[col]["quat"][tgt]
-            p_cur = data.xpos[bid].copy()
-            q_cur = data.xquat[bid][[1, 2, 3, 0]]  # xyzw
+        for tracker, body_id in BIDS.items():
+            p_des = poses[tracker]["pos"][tgt_row]
+            q_des = poses[tracker]["quat"][tgt_row]  # in xyzw
 
-            # position error and force
-            dp = np.zeros(3) if p_des is None else (p_des - p_cur)
-            F  = KP_POS * dp
-
-            # rotation error and torque
-            if q_des is None:
-                rotvec = np.zeros(3)
-                T_world = np.zeros(3)
-            else:
-                rotvec   = quat_err(q_des, q_cur)
-                T_body   = KP_ROT * rotvec
-                R_world  = R.from_quat(q_cur).as_matrix()
-                T_world  = R_world @ T_body
-
-            data.xfrc_applied[bid, :3] = F
-            data.xfrc_applied[bid, 3:] = T_world
-
-            pos_err_sum += dp @ dp
-            rot_err_sum += rotvec @ rotvec
-
-        # --------- advance physics *exactly* 50 times -----------
-        for _ in range(50):          
+            if p_des is None or q_des is None:
+                continue                       
+            set_body_pose(model, data, body_id, p_des, q_des)
+            
+        for _ in range(5):
             mujoco.mj_step(model, data)
-            sim_t += model.opt.timestep
+        sim_t = data.time
+
+        for tracker, body_id in BIDS.items():
+            p_des = poses[tracker]["pos"][tgt_row]
+            q_des = poses[tracker]["quat"][tgt_row]
+
+            if p_des is None or q_des is None:
+                continue
+
+            p_cur = data.xpos[body_id]         
+            q_cur = data.xquat[body_id]         
+
+            # Reorder q_des to [w, x, y, z]
+            q_des_wxyz = np.empty(4)
+            q_des_wxyz[0] = q_des[3]
+            q_des_wxyz[1:] = q_des[:3]
+
+            # Position error
+            pos_err = np.linalg.norm(p_cur - p_des)
+
+            # Rotation error: angle between quaternions
+            R_des = R.from_quat(q_des_wxyz)
+            R_cur = R.from_quat(q_cur)
+            R_rel = R_des * R_cur.inv()
+            rot_err = R_rel.magnitude()  # radians
+
+            pos_err_sum += pos_err
+            rot_err_sum += rot_err
 
     return pos_err_sum + rot_err_sum
 
+# incomplete
 def main_loop(start, end):
     best_propdict = None
     lowest_err = float('inf')
-    for val in range(start, end):
-        property_dict = create_prop_dict(len)
-        optim = optimizer.Optimizer()
-        model, data = optim.simulate_with_new_properties(MODEL_XML, property_dict)
-        error = simulate_error(model, data)
-        if error < lowest_err:
-            lowest_err = error
-            best_propdict = property_dict
-    return best_propdict
+    property_dict = create_prop_dict("proxi_exo1", "0 0 0 -.012 0 .005")
+    model, data = simulate_with_new_properties(MODEL_XML, property_dict)
+    error = simulate_error(model, data)
+    print(error)
 
 BODIES = ["proxi_exo1", "proxi_exo2", "distal_exo1", "distal_exo2", "distal_exo3"]
-PARAMS = ["fromto", "size", "pos"]
+PARAMS = ["fromto", "size"]
 
-def create_prop_dict(val, part):
+def create_prop_dict(part, val):
 
-    if part == BODIES[2]:
-        property_dict = {(part, "geom", PARAMS[0]): val}
+    mjcf_tree = mjcf.from_path(MODEL_XML)
+    val_list = val.split()
+    from_ = ' '.join(val_list[:3])
+    to_ = ' '.join(val_list[3:])
 
+    #import ipdb;ipdb.set_trace()
+    if part == BODIES[0]:
+        proxi_2_val = get_sim_prop(
+            mjcf_tree, BODIES[1], "geom", PARAMS[0])
+        print(proxi_2_val)
+        lst = proxi_2_val.split()
+        proxi_2_new = to_ + ' ' + ' '.join(lst[3:])
+        property_dict = {(BODIES[0], "geom", PARAMS[0]): val,
+                         (BODIES[1], "geom", PARAMS[0]): proxi_2_new}
+        
+    elif part == BODIES[1]:
+        proxi_1_val = get_sim_prop(
+            mjcf_tree, BODIES[0], "geom", PARAMS[0])
+        lst = proxi_1_val.split()
+        proxi_1_new = ' '.join(lst[:3]) + ' ' + from_
+        property_dict = {(BODIES[0], "geom", PARAMS[0]): proxi_1_new,
+                         (BODIES[1], "geom", PARAMS[0]): val}
+        
+    elif part == BODIES[2]:
+        distal_2_val = get_sim_prop(
+            mjcf_tree, BODIES[3], "geom", PARAMS[0])
+        lst = distal_2_val.split()
+        distal_2_new = to_ + ' ' + ' '.join(lst[3:])
+        property_dict = {(BODIES[2], "geom", PARAMS[0]): val,
+                         (BODIES[3], "geom", PARAMS[0]): distal_2_new,}
+        
+    elif part == BODIES[3]:
+        distal_1_val = get_sim_prop(
+            mjcf_tree, BODIES[2], "geom", PARAMS[0])
+        lst = distal_1_val.split()
+        distal_1_new = ' '.join(lst[:3]) + ' ' + from_
+        distal_3_val = get_sim_prop(
+            mjcf_tree, BODIES[4], "geom", PARAMS[0])
+        lst = distal_3_val.split()
+        distal_3_new = to_ + ' ' + ' '.join(lst[3:]) 
+        property_dict = {(BODIES[2], "geom", PARAMS[0]): distal_1_new,
+                         (BODIES[3], "geom", PARAMS[0]): val,
+                         (BODIES[4], "geom", PARAMS[0]): distal_3_new}
+        
+    elif part == BODIES[4]:
+        distal_2_val = get_sim_prop(
+            mjcf_tree, BODIES[3], "geom", PARAMS[0])
+        lst = distal_2_val.split()
+        distal_2_new = ' '.join(lst[:3]) + ' ' + from_
+        property_dict = {(BODIES[2], "geom", PARAMS[0]): distal_2_new,
+                         (BODIES[3], "geom", PARAMS[0]): val}
+        
     return property_dict
 
+main_loop(1,1)

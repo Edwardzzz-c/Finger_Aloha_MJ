@@ -10,7 +10,7 @@ import time
 # -------------------------  USER SETTINGS  ---------------------------
 # ---------------------------------------------------------------------
 MODEL_XML = "index_finger.xml"      
-CSV_FILE  = "finger_kinematics_data/finger_calibration_2.csv" 
+CSV_FILE  = "finger_kinematics_data/new_data2.csv" 
 BODY_MAP  = {                        
     "trakstar0": "shell_dist",
     "trakstar1": "shell_mid",
@@ -58,12 +58,6 @@ def _parse_pose_block(cell: str):
     pos = np.array([tx, ty, tz], dtype=float)
     return pos, quat
 
-
-def quat_err(qd, qc):
-    """axis-angle error (body frame) that rotates qc → qd."""
-    return (R.from_quat(qc).inv() * R.from_quat(qd)).as_rotvec()
-
-
 # ---------------------------------------------------------------------
 # --------------------  LOAD MODEL, DATA, CSV  ------------------------
 # ---------------------------------------------------------------------
@@ -97,13 +91,13 @@ for col in BODY_MAP:
 # ---------------------  Transform & Translation ----------------------
 # ---------------------------------------------------------------------
 # Katelyn's transform
-R_corr = R.from_euler("z", -90, degrees=True)
+"""R_corr = R.from_euler("z", -90, degrees=True)
 SCALE  = 1.0            
-OFFSET = np.array([-0.03, -0.22, 0]) 
+OFFSET = np.array([-0.03, -0.22, 0]) """
 # Edward's transform
-"""R_corr = R.from_euler("y", 180, degrees=True)
+R_corr = R.from_euler("y", 180, degrees=True)
 SCALE  = 1.0            
-OFFSET = np.array([-0.195, 0.078, -0.015])  """
+OFFSET = np.array([-0.195, 0.083, -0.04])  
 
 for col in poses:
     # transform every position
@@ -116,6 +110,26 @@ for col in poses:
         None if q is None else (R_corr * R.from_quat(q)).as_quat()
         for q in poses[col]["quat"]
     ]
+
+# ------------------------------------------------------------------
+# Helper: overwrite a free body’s world-pose
+# ------------------------------------------------------------------
+def set_body_pose(model, data, body_id, p_xyz, q_xyzw):
+    """
+    p_xyz  : (3,) world position  [x y z]
+    q_xyzw : (4,) world quaternion (x y z w)
+
+    """
+    joint_adr   = model.body_jntadr[body_id]      
+    qpos_adr   = model.jnt_qposadr[joint_adr]         
+
+    # Reorder to wxyz
+    qwxyz = np.empty(4)
+    qwxyz[0] = q_xyzw[3]
+    qwxyz[1:] = q_xyzw[:3]
+
+    data.qpos[qpos_adr     : qpos_adr+3] = p_xyz      # x, y, z
+    data.qpos[qpos_adr+3   : qpos_adr+7] = qwxyz      # w, x, y, z
 
 # ---------------------------------------------------------------------
 # ----------------------------  SIM LOOP  -----------------------------
@@ -133,60 +147,27 @@ while viewer.is_running() and row < len(df):
     tgt_row = row - 1                      
 
     # Loop over each controlled body
-    for col, body_id in BIDS.items():
+    for tracker, body_id in BIDS.items():
         # Get the target pose from poses dict
-        p_des = poses[col]["pos"][tgt_row]
-        q_des = poses[col]["quat"][tgt_row]  # in xyzw
+        p_des = poses[tracker]["pos"][tgt_row]
+        q_des = poses[tracker]["quat"][tgt_row]  # in xyzw
 
-        # Current world position/world orientation
-        p_cur = data.xpos[body_id].copy()
-        q_cur = data.xquat[body_id].copy()   # in wxyz
-        q_cur = q_cur[[1,2,3,0]]  # now in xyzw
+        if p_des is None or q_des is None:
+            continue                       
+        set_body_pose(model, data, body_id, p_des, q_des)
         
-        # Current linear/angular velocity
-        v_cur = data.cvel[body_id, :3]
-        w_cur = data.cvel[body_id, 3:]
-
-        # Pd controller values
-        MAX_TORQUE = 8e-2
-        MAX_FORCE = 8e-2
-        #DAMPENING = 0.0005
-        
-        # Calculate force/torque to apply to bodies
-        if p_des is None:
-            F = np.zeros(3)
-        else: 
-            F = MAX_FORCE * (p_des - p_cur) #- DAMPENING * v_cur
-        if q_des is None:
-            T_world = np.zeros(3)
-        else: 
-            rot_err = quat_err(q_des, q_cur)
-            T_body  = MAX_TORQUE * rot_err #- DAMPENING * w_cur
-
-            # Convert torque to world frame
-            R_world = R.from_quat(q_cur).as_matrix()
-            T_world = R_world @ T_body
-
-        F_cmd[body_id] = F     
-        T_cmd[body_id] = T_world
-
-        if row % 100 == 0:
-            print(f"""pos_desired = {p_des}""")
-            print(f"""pos_current = {p_cur}""")
-            print(f"""Force applied = {F}""")
-        #    print(f"""velocity = {v_cur}""")
-            print("rotvec_desired =", R.from_quat(q_des).as_rotvec())
-            print("rotvec_current =", R.from_quat(q_cur).as_rotvec())
-            print(f"""Rotation applied = {T_world}""")
-        
-    for _ in range(50):
-        for bid in BIDS.values():   
-            data.xfrc_applied[bid, :3] = F_cmd[bid]
-            data.xfrc_applied[bid, 3:] = T_cmd[bid]
+    for _ in range(5):
         mujoco.mj_step(model, data)
-        sim_t += model.opt.timestep
-
+    sim_t = data.time
+    
     viewer.sync()
     time.sleep(0.01)
+    """if row % 100 == 0:
+        for tracker, body_id in BIDS.items():
+            p_des = poses[tracker]['pos'][tgt_row]
+            p_cur = data.xpos[body_id]
+            print(f"{tracker}: p_des = {p_des}, p_cur = {p_cur}")"""
+
+            
 
 viewer.close()

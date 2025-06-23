@@ -3,15 +3,15 @@ import mujoco
 import numpy as np
 import pandas as pd
 from scipy.spatial.transform import Rotation as R
-from optimizer_helpers import get_sim_prop, simulate_with_new_properties
+from optimizer_helpers import simulate_with_new_properties
 from dm_control import mjcf
-
+from tqdm import tqdm
 
 # ---------------------------------------------------------------------
 # -------------------------  USER SETTINGS  ---------------------------
 # ---------------------------------------------------------------------
 MODEL_XML = "index_finger.xml"      
-CSV_FILE  = "finger_kinematics_data/finger_calibration_2.csv" 
+CSV_FILE  = "finger_kinematics_data/Jun20.3.csv" 
 BODY_MAP  = {                        
     "trakstar0": "shell_dist",
     "trakstar1": "shell_mid",
@@ -91,9 +91,9 @@ for col in BODY_MAP:
 # ---------------------------------------------------------------------
 # ---------------------  Transform & Translation ----------------------
 # ---------------------------------------------------------------------
-R_corr = R.from_euler("z", -90, degrees=True)
+R_corr = R.from_euler("xy", [-15,-13], degrees=True)
 SCALE  = 1.0            
-OFFSET = np.array([-0.03, -0.22, 0])   
+OFFSET = np.array([0.2,0,-0.035])
 
 for col in poses:
     # transform every position
@@ -182,72 +182,94 @@ def simulate_error(model, data):
 
     return pos_err_sum + rot_err_sum
 
-# incomplete
-def main_loop(start, end):
-    best_propdict = None
-    lowest_err = float('inf')
-    property_dict = create_prop_dict("proxi_exo1", "0 0 0 -.012 0 .005")
-    model, data = simulate_with_new_properties(MODEL_XML, property_dict)
-    error = simulate_error(model, data)
-    print(error)
-
-BODIES = ["proxi_exo1", "proxi_exo2", "distal_exo1", "distal_exo2", "distal_exo3"]
-PARAMS = ["fromto", "size"]
 
 def create_prop_dict(part, val):
+    """
+    Create a property dictionary for the specified part and value.
+    The value is expected to be a 'from to' list."""
 
-    mjcf_tree = mjcf.from_path(MODEL_XML)
-    val_list = val.split()
-    from_ = ' '.join(val_list[:3])
-    to_ = ' '.join(val_list[3:])
-
-    #import ipdb;ipdb.set_trace()
-    if part == BODIES[0]:
-        proxi_2_val = get_sim_prop(
-            mjcf_tree, BODIES[1], "geom", PARAMS[0])
-        print(proxi_2_val)
-        lst = proxi_2_val.split()
-        proxi_2_new = to_ + ' ' + ' '.join(lst[3:])
-        property_dict = {(BODIES[0], "geom", PARAMS[0]): val,
-                         (BODIES[1], "geom", PARAMS[0]): proxi_2_new}
+    from_ = val[:3]
+    to_ = val[3:]
+    
+    if part == "proxi_exo1":
+        proxi_2_new_pos = to_
+        property_dict = {("proxi_exo1", "geom", "fromto"): val,
+                         ("proxi_exo2", None, "pos"): proxi_2_new_pos}
+      
+    elif part == "proxi_exo2":
+        property_dict = {("proxi_exo2", "geom", "fromto"): val}
         
-    elif part == BODIES[1]:
-        proxi_1_val = get_sim_prop(
-            mjcf_tree, BODIES[0], "geom", PARAMS[0])
-        lst = proxi_1_val.split()
-        proxi_1_new = ' '.join(lst[:3]) + ' ' + from_
-        property_dict = {(BODIES[0], "geom", PARAMS[0]): proxi_1_new,
-                         (BODIES[1], "geom", PARAMS[0]): val}
+    elif part == "distal_exo1":
         
-    elif part == BODIES[2]:
-        distal_2_val = get_sim_prop(
-            mjcf_tree, BODIES[3], "geom", PARAMS[0])
-        lst = distal_2_val.split()
-        distal_2_new = to_ + ' ' + ' '.join(lst[3:])
-        property_dict = {(BODIES[2], "geom", PARAMS[0]): val,
-                         (BODIES[3], "geom", PARAMS[0]): distal_2_new,}
+        distal_2_new_pos = to_
+        property_dict = {("distal_exo1", "geom", "fromto"): val,
+                         ("distal_exo2", None, "pos"): distal_2_new_pos}
+ 
+    elif part == "distal_exo2":
+        property_dict = {("distal_exo2", "geom", "fromto"): val,
+                         ("distal_exo3", None, "pos"): to_}
         
-    elif part == BODIES[3]:
-        distal_1_val = get_sim_prop(
-            mjcf_tree, BODIES[2], "geom", PARAMS[0])
-        lst = distal_1_val.split()
-        distal_1_new = ' '.join(lst[:3]) + ' ' + from_
-        distal_3_val = get_sim_prop(
-            mjcf_tree, BODIES[4], "geom", PARAMS[0])
-        lst = distal_3_val.split()
-        distal_3_new = to_ + ' ' + ' '.join(lst[3:]) 
-        property_dict = {(BODIES[2], "geom", PARAMS[0]): distal_1_new,
-                         (BODIES[3], "geom", PARAMS[0]): val,
-                         (BODIES[4], "geom", PARAMS[0]): distal_3_new}
-        
-    elif part == BODIES[4]:
-        distal_2_val = get_sim_prop(
-            mjcf_tree, BODIES[3], "geom", PARAMS[0])
-        lst = distal_2_val.split()
-        distal_2_new = ' '.join(lst[:3]) + ' ' + from_
-        property_dict = {(BODIES[2], "geom", PARAMS[0]): distal_2_new,
-                         (BODIES[3], "geom", PARAMS[0]): val}
+    elif part == "distal_exo3":
+        property_dict = {("distal_exo3", "geom", "fromto"): val}
         
     return property_dict
 
-main_loop(1,1)
+
+def cem_sampling(link, L_min, L_max,
+                 n_epochs=40, n_samples=20, best_frac=0.2, seed=0, k=3,):
+    
+    """Cross-Entropy search that returns the best length found.
+    Args:
+        n_epochs (int): Number of epochs to run.
+        n_samples (int): Number of samples per epoch.
+        best_frac (float): Fraction of best samples to keep.
+        seed (int): Random seed for reproducibility.
+        L_min (float): Minimum length to sample.
+        L_max (float): Maximum length to sample.
+        k (int): Scaling factor for standard deviation.
+        link (str): The body name to optimize.
+    Returns:
+        tuple: Best length found and its corresponding score."""
+    
+    root = mjcf.from_path(MODEL_XML)
+
+    rng = np.random.default_rng(seed)
+    mean = (L_min + L_max) / 2
+    std  = (L_max - L_min) / (2 * k)
+    n_best = max(1, int(n_samples * best_frac))
+    best_param, best_len, best_score = None, None, -np.inf
+
+    for _ in tqdm(range(n_epochs)):
+        lens   = rng.standard_normal(n_samples) * std + mean
+        scores = np.empty(n_samples)
+
+        for i, l in enumerate(lens):
+            from_to = len_to_fromto(l, link)
+            property_dict = create_prop_dict(link, from_to)
+            model, data = simulate_with_new_properties(root, property_dict)
+            s = -simulate_error(model, data)
+            scores[i] = s
+            if s > best_score:                     
+                best_len, best_score = l, s
+                best_param = from_to
+
+        elite = lens[scores.argsort()[-n_best:]]    
+        mean, std = elite.mean(), elite.std() + 1e-6
+
+    return best_param, best_len, -best_score
+    
+def len_to_fromto(length, link):
+    """
+    Converts a length to a 'fromto' string format.
+    """
+    if link == "distal_exo2":
+        ux, uy, uz = -0.148523, 0.0, 0.988909            # unit vector
+        x, y, z = ux*length, uy*length, uz*length
+        return [0,0,0,round(x,6),round(y,6),round(z,6)]
+
+if __name__ == "__main__":
+    best_param, best_len, best_score = cem_sampling(link="distal_exo2", L_min=0.05, L_max=0.13)
+    print("Optimization complete.")
+    print(f"Best parameter: {best_param}", 
+          f"Best length: {best_len:.6f}",
+          f"Best score: {best_score:.6f}")

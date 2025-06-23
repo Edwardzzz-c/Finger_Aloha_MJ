@@ -10,7 +10,7 @@ import time
 # -------------------------  USER SETTINGS  ---------------------------
 # ---------------------------------------------------------------------
 MODEL_XML = "index_finger.xml"      
-CSV_FILE  = "finger_kinematics_data/new_data2.csv" 
+CSV_FILE  = "finger_kinematics_data/Jun20.3.csv" 
 BODY_MAP  = {                        
     "trakstar0": "shell_dist",
     "trakstar1": "shell_mid",
@@ -95,10 +95,9 @@ for col in BODY_MAP:
 SCALE  = 1.0            
 OFFSET = np.array([-0.03, -0.22, 0]) """
 # Edward's transform
-R_corr = R.from_euler("y", 180, degrees=True)
+R_corr = R.from_euler("xy", [-15,-13], degrees=True)
 SCALE  = 1.0            
-OFFSET = np.array([-0.195, 0.083, -0.04])  
-
+OFFSET = np.array([0.2,0,-0.035])
 for col in poses:
     # transform every position
     poses[col]["pos"] = [
@@ -162,11 +161,12 @@ while viewer.is_running() and row < len(df):
     
     viewer.sync()
     time.sleep(0.01)
-    """if row % 100 == 0:
+    if row % 100 == 0:
         for tracker, body_id in BIDS.items():
             p_des = poses[tracker]['pos'][tgt_row]
             p_cur = data.xpos[body_id]
-            print(f"{tracker}: p_des = {p_des}, p_cur = {p_cur}")"""
+          #  print(f"{tracker}: p_des = {p_des}, p_cur = {p_cur}")
+            print(p_des == p_cur)
 
             
 

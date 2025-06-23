@@ -10,7 +10,7 @@ import time
 # -------------------------  USER SETTINGS  ---------------------------
 # ---------------------------------------------------------------------
 MODEL_XML = "index_finger.xml"      
-CSV_FILE  = "finger_kinematics_data/finger_calibration_2.csv" 
+CSV_FILE  = "finger_kinematics_data/Jun20.3.csv" 
 BODY_MAP  = {                        
     "trakstar0": "shell_dist",
     "trakstar1": "shell_mid",
@@ -97,13 +97,13 @@ for col in BODY_MAP:
 # ---------------------  Transform & Translation ----------------------
 # ---------------------------------------------------------------------
 # Katelyn's transform
-R_corr = R.from_euler("z", -90, degrees=True)
+"""R_corr = R.from_euler("z", -90, degrees=True)
 SCALE  = 1.0            
-OFFSET = np.array([-0.03, -0.22, 0]) 
+OFFSET = np.array([-0.03, -0.22, 0]) """
 # Edward's transform
-"""R_corr = R.from_euler("y", 180, degrees=True)
+R_corr = R.from_euler("xy", [-15,-13], degrees=True)
 SCALE  = 1.0            
-OFFSET = np.array([-0.195, 0.078, -0.015])  """
+OFFSET = np.array([0.18,0,-0.035])
 
 for col in poses:
     # transform every position

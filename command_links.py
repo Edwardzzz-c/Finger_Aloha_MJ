@@ -19,11 +19,6 @@ TRAKSTAR_TO_BODY  = {
     "trakstar1": "shell_mid",
     "trakstar2": "shell_prox",
 }
-SHELL_TO_MOCAP = {
-    "shell_dist": "dist_mocap",
-    "shell_mid" : "mid_mocap",
-    "shell_prox": "prox_mocap",
-}
 
 
 # ---------------------------------------------------------------------
@@ -72,16 +67,13 @@ def _parse_pose_block(cell: str):
 model = mujoco.MjModel.from_xml_path(MODEL_XML)
 data  = mujoco.MjData(model)
 mujoco.mj_forward(model, data)   
-
+# Map body IDs once for speed
 TRAKSTAR_TO_BID = {col: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body)
         for col, body in TRAKSTAR_TO_BODY.items()}
-
 TRAKSTAR_TO_MOCAPID = {}
-for tracker, shell_name in TRAKSTAR_TO_BODY.items():         
-    mocap_name = SHELL_TO_MOCAP[shell_name]         
-    
-    body_id    = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, mocap_name)
-    mocap_idx  = model.body_mocapid[body_id]      
+for tracker, body_name in TRAKSTAR_TO_BODY.items():
+    body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
+    mocap_idx = model.body_mocapid[body_id]
     TRAKSTAR_TO_MOCAPID[tracker] = mocap_idx
 
 
@@ -172,7 +164,7 @@ while viewer.is_running() and row < len(df):
         mocap_idx = TRAKSTAR_TO_MOCAPID[tracker]  
         set_body_pose(data, mocap_idx, p_des, q_des)
         
-    for _ in range(50):
+    for _ in range(5):
         mujoco.mj_step(model, data)
     sim_t = data.time
 

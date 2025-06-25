@@ -120,11 +120,7 @@
         </body>
 
         <!-- 1  proximal link : total length 0.035 m -->
-        <body name="prox_mocap" pos="0 0 0.07" mocap="true">
-            <site name="shell_prox_site" size="0.001" />
-        </body>
-        <body name="shell_prox" pos="0 0 0.07">
-            <joint type="free" pos="0 0 0" />
+        <body name="shell_prox" pos="0 0 0.07" mocap="true">
             <inertial pos="0 0 0"
                 mass="0.00716"
                 diaginertia="2.29e-07 8.45e-07 8.45e-07" />
@@ -135,11 +131,7 @@
         </body>
 
         <!-- 2  middle link : length 0.025 m -->
-        <body name="mid_mocap" pos="0.035 0 0.07" mocap="true">
-            <site name="shell_mid_site" size="0.001" />
-        </body>
-        <body name="shell_mid" pos="0.035 0 0.07">
-            <joint type="free" pos="0 0 0" />
+        <body name="shell_mid" pos="0.035 0 0.07" mocap="true">
             <inertial pos="0 0 0"
                 mass="0.00376"
                 diaginertia="9.20e-08 2.42e-07 2.42e-07" />
@@ -150,11 +142,7 @@
         </body>
 
         <!-- 3  distal link : length 0.020 m -->
-        <body name="dist_mocap" pos="0.06 0 0.07" mocap="true">
-            <site name="shell_dist_site" size="0.001" />
-        </body>
-        <body name="shell_dist" pos="0.060 0 0.07">
-            <joint type="free" pos="0 0 0" />
+        <body name="shell_dist" pos="0.060 0 0.07" mocap="true">
             <inertial pos="0 0 0"
                 mass="0.00217"
                 diaginertia="3.91e-08 9.19e-08 9.19e-08" />
@@ -182,16 +170,14 @@
     </contact>
 
     <equality>
-        <weld body1="distal_exo3" body2="shell_dist"
+        <weld name="w1" body1="distal_exo3" body2="shell_dist"
             solref="0.002 2" solimp="0.9 0.95 0.002" />
-        <weld body1="proxi_exo2" body2="shell_mid"
+        <weld name="w2" body1="proxi_exo2" body2="shell_mid"
             solref="0.002 2" solimp="0.9 0.95 0.002" />
-        <weld body1="prox_mocap" body2="shell_prox"
-            solref="0.00005 4" solimp="0.9 0.95 0.002" />
-        <weld body1="mid_mocap" body2="shell_mid"
-            solref="0.00005 4" solimp="0.9 0.95 0.002" />
-        <weld body1="dist_mocap" body2="shell_dist"
-            solref="0.00005 4" solimp="0.9 0.95 0.002" />
+        <!-- <weld name="w3" body1="shell_mid" body2="shell_dist"
+            solref="0.002 2" solimp="0.9 0.95 0.002" />
+        <weld name="w4" body1="shell_prox" body2="shell_mid"
+            solref="0.002 2" solimp="0.9 0.95 0.002" /> -->
     </equality>
 
     <!--––––

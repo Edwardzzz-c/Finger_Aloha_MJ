@@ -5,16 +5,24 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.transform import Rotation as R
 import time
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 # ---------------------------------------------------------------------
 # -------------------------  USER SETTINGS  ---------------------------
 # ---------------------------------------------------------------------
 MODEL_XML = "index_finger.xml"      
 CSV_FILE  = "finger_kinematics_data/Jun20.3.csv" 
-BODY_MAP  = {                        
+TRAKSTAR_TO_BODY  = {                        
     "trakstar0": "shell_dist",
     "trakstar1": "shell_mid",
     "trakstar2": "shell_prox",
+}
+SHELL_TO_MOCAP = {
+    "shell_dist": "dist_mocap",
+    "shell_mid" : "mid_mocap",
+    "shell_prox": "prox_mocap",
 }
 
 
@@ -64,9 +72,18 @@ def _parse_pose_block(cell: str):
 model = mujoco.MjModel.from_xml_path(MODEL_XML)
 data  = mujoco.MjData(model)
 mujoco.mj_forward(model, data)   
-# Map body IDs once for speed
-BIDS = {col: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body)
-        for col, body in BODY_MAP.items()}
+
+TRAKSTAR_TO_BID = {col: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body)
+        for col, body in TRAKSTAR_TO_BODY.items()}
+
+TRAKSTAR_TO_MOCAPID = {}
+for tracker, shell_name in TRAKSTAR_TO_BODY.items():         
+    mocap_name = SHELL_TO_MOCAP[shell_name]         
+    
+    body_id    = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, mocap_name)
+    mocap_idx  = model.body_mocapid[body_id]      
+    TRAKSTAR_TO_MOCAPID[tracker] = mocap_idx
+
 
 df = pd.read_csv(CSV_FILE)
 
@@ -75,7 +92,7 @@ time_series = df["time_elapsed"].values.astype(float)
 
 # For each tracker column we care about, parse every row up-front
 poses = {}
-for col in BODY_MAP:
+for col in TRAKSTAR_TO_BODY:
     pos_list, quat_list = [], []
     for cell in df[col]:
         parsed = _parse_pose_block(cell)
@@ -113,22 +130,18 @@ for col in poses:
 # ------------------------------------------------------------------
 # Helper: overwrite a free body’s world-pose
 # ------------------------------------------------------------------
-def set_body_pose(model, data, body_id, p_xyz, q_xyzw):
+def set_body_pose(data, mocap_idx, p_xyz, q_xyzw):
     """
     p_xyz  : (3,) world position  [x y z]
     q_xyzw : (4,) world quaternion (x y z w)
 
     """
-    joint_adr   = model.body_jntadr[body_id]      
-    qpos_adr   = model.jnt_qposadr[joint_adr]         
+    data.mocap_pos[mocap_idx] = p_xyz
 
-    # Reorder to wxyz
     qwxyz = np.empty(4)
-    qwxyz[0] = q_xyzw[3]
-    qwxyz[1:] = q_xyzw[:3]
-
-    data.qpos[qpos_adr     : qpos_adr+3] = p_xyz      # x, y, z
-    data.qpos[qpos_adr+3   : qpos_adr+7] = qwxyz      # w, x, y, z
+    qwxyz[0] = q_xyzw[3]      # w
+    qwxyz[1:] = q_xyzw[:3]    # x y z
+    data.mocap_quat[mocap_idx] = qwxyz
 
 # ---------------------------------------------------------------------
 # ----------------------------  SIM LOOP  -----------------------------
@@ -138,6 +151,9 @@ row = 0
 sim_t = 0.0
 F_cmd = {}
 T_cmd = {}
+sensor_forces = []
+time_plt = []
+sensor_id = model.sensor(name="tip_force").id
 
 while viewer.is_running() and row < len(df):
     # Advance row pointer whenever we've passed that timestamp
@@ -146,28 +162,40 @@ while viewer.is_running() and row < len(df):
     tgt_row = row - 1                      
 
     # Loop over each controlled body
-    for tracker, body_id in BIDS.items():
+    for tracker, body_id in TRAKSTAR_TO_BID.items():
         # Get the target pose from poses dict
         p_des = poses[tracker]["pos"][tgt_row]
         q_des = poses[tracker]["quat"][tgt_row]  # in xyzw
 
         if p_des is None or q_des is None:
-            continue                       
-        set_body_pose(model, data, body_id, p_des, q_des)
+            continue                     
+        mocap_idx = TRAKSTAR_TO_MOCAPID[tracker]  
+        set_body_pose(data, mocap_idx, p_des, q_des)
         
-    for _ in range(5):
+    for _ in range(50):
         mujoco.mj_step(model, data)
     sim_t = data.time
-    
+
+    fx, fy, fz = data.sensordata[sensor_id:sensor_id+3]
+    sensor_forces.append(np.linalg.norm([fx, fy, fz]))
+    time_plt.append(sim_t)
+    if row%50 == 0:
+        print(fx, fy, fz)
+
     viewer.sync()
     time.sleep(0.01)
+
+    
     if row % 100 == 0:
-        for tracker, body_id in BIDS.items():
+        for tracker, body_id in TRAKSTAR_TO_BID.items():
             p_des = poses[tracker]['pos'][tgt_row]
             p_cur = data.xpos[body_id]
           #  print(f"{tracker}: p_des = {p_des}, p_cur = {p_cur}")
             print(p_des == p_cur)
-
-            
-
+    
 viewer.close()
+plt.plot(range(len(sensor_forces)), sensor_forces)
+plt.xlabel("Time (s)")
+plt.ylabel("Sensor Force (N)")
+plt.title("Sensor Force Over Time")
+plt.savefig("sensor_force_plot.png")

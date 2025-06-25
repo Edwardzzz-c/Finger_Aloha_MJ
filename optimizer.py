@@ -270,6 +270,7 @@ def len_to_fromto(length, link):
 if __name__ == "__main__":
     best_param, best_len, best_score = cem_sampling(link="distal_exo2", L_min=0.05, L_max=0.13)
     print("Optimization complete.")
+    best_param = [float(v) for v in best_param]
     print(f"Best parameter: {best_param}", 
           f"Best length: {best_len:.6f}",
           f"Best score: {best_score:.6f}")

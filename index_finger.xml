@@ -71,7 +71,7 @@
                     <body name="proxi_exo2" pos="-0.012 0 0.005">
                         <joint name="hinge2.1" type="hinge" pos="0 0 0" axis="0 1 0" range="-20 90" />
                         <geom type="capsule"
-                            fromto="0 0 0   0.013 0 .048"
+                            fromto="0 0 0   0.013 0 .052"
                             size="0.003"
                             rgba="0 0 1 1" />
                     </body>
@@ -109,12 +109,16 @@
                         </body>
                     </body>
                     <!-- fingertip contact & marker -->
-                    <site name="fingertip" pos="0.04883 0.01 0"
-                        size="0.005" rgba="0 1 0 1" type="sphere" />
-                    <geom name="tip_sphere" type="sphere" size="0.005"
-                        pos="0.04883 0.01 0"
-                        condim="3"
-                        friction="2 0.002 0.0001" />
+                    <body name="fingertip" pos="0.04883 0.01 0">
+                        <site name="fingertip" pos="0 0 0"
+                            size="0.005" rgba="0 1 0 1" type="capsule"
+                            fromto="-0.01 0 0 0.013 0 0" />
+                        <geom name="tip_sphere" type="capsule" size="0.005"
+                            fromto="-0.01 0 0   0.013 0 0" rgba="0 1 0 1"
+                            pos="0 0 0"
+                            condim="3"
+                            friction="2 0.002 0.0001" />
+                    </body>
                 </body>
             </body>
         </body>
@@ -151,10 +155,11 @@
                 size="0.006" rgba="1 0.8 0.6 0.6"
                 contype="0" conaffinity="0" />
         </body>
-
-        <geom name="ground" type="plane"
-            pos="0 0 -0.08" size="10 10 0.1"
-            material="floor_mat" />
+        <body name="ground" pos="0 0 -0.06">
+            <geom name="ground" type="plane"
+                pos="0 0 0" size="10 10 0.1"
+                material="floor_mat" />
+        </body>
 
         <!-- Light -->
         <light name="key" pos="0 0 3" dir="0 0 -1" directional="true"
@@ -167,6 +172,7 @@
     <contact>
         <exclude body1="base_link" body2="proximal_link" />
         <exclude body1="proximal_link" body2="distal_link" />
+        <!-- <exclude body1="fingertip" body2="ground" /> -->
     </contact>
 
     <equality>
@@ -174,15 +180,11 @@
             solref="0.002 2" solimp="0.9 0.95 0.002" />
         <weld name="w2" body1="proxi_exo2" body2="shell_mid"
             solref="0.002 2" solimp="0.9 0.95 0.002" />
-        <!-- <weld name="w3" body1="shell_mid" body2="shell_dist"
-            solref="0.002 2" solimp="0.9 0.95 0.002" />
-        <weld name="w4" body1="shell_prox" body2="shell_mid"
-            solref="0.002 2" solimp="0.9 0.95 0.002" /> -->
     </equality>
 
     <!--––––
     sensors ––––-->
     <sensor>
-        <force site="fingertip" name="tip_force" />
+        <touch site="fingertip" name="tip_force" />
     </sensor>
 </mujoco>

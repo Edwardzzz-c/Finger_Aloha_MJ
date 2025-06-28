@@ -106,7 +106,7 @@ OFFSET = np.array([-0.03, -0.22, 0]) """
 # Edward's transform
 R_corr = R.from_euler("xy", [-15,-13], degrees=True)
 SCALE  = 1.0            
-OFFSET = np.array([0.2,0,-0.035])
+OFFSET = np.array([0.19,0,-0.035])
 for col in poses:
     # transform every position
     poses[col]["pos"] = [
@@ -168,22 +168,20 @@ while viewer.is_running() and row < len(df):
         mujoco.mj_step(model, data)
     sim_t = data.time
 
-    fx, fy, fz = data.sensordata[sensor_id:sensor_id+3]
-    sensor_forces.append(np.linalg.norm([fx, fy, fz]))
+    f = data.sensordata[sensor_id]
+    sensor_forces.append(f)
     time_plt.append(sim_t)
-    if row%50 == 0:
-        print(fx, fy, fz)
 
     viewer.sync()
     time.sleep(0.01)
 
     
-    if row % 100 == 0:
+    """if row % 100 == 0:
         for tracker, body_id in TRAKSTAR_TO_BID.items():
             p_des = poses[tracker]['pos'][tgt_row]
             p_cur = data.xpos[body_id]
           #  print(f"{tracker}: p_des = {p_des}, p_cur = {p_cur}")
-            print(p_des == p_cur)
+            print(p_des == p_cur)"""
     
 viewer.close()
 plt.plot(range(len(sensor_forces)), sensor_forces)

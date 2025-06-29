@@ -135,17 +135,16 @@ T_cmd = {}
 
 def simulate_error(model, data):
 
-    pos_err_sum, rot_err_sum = 0.0, 0.0
-    row, sim_t = 0, 0.0
+    row, sim_t = 1, 0.0
+    samples = 0
+    error = 0.0
 
     while row < len(df):
         if sim_t >= time_series[row]:
             row += 1
         tgt_row = row - 1                      
 
-    # Loop over each controlled body
         for tracker, body_id in TRAKSTAR_TO_BID.items():
-            # Get the target pose from poses dict
             p_des = poses[tracker]["pos"][tgt_row]
             q_des = poses[tracker]["quat"][tgt_row]  # in xyzw
 
@@ -158,34 +157,15 @@ def simulate_error(model, data):
             mujoco.mj_step(model, data)
         sim_t = data.time
 
-        for tracker, body_id in TRAKSTAR_TO_BID.items():
-            p_des = poses[tracker]["pos"][tgt_row]
-            q_des = poses[tracker]["quat"][tgt_row]
+        # Calculate error
+        td_R = data.sensor("dist_R").data
+        td_H = data.sensor("dist_H").data
+        error += np.linalg.norm(td_R - td_H)
+        samples += 1
+    
+    return error / samples
 
-            if p_des is None or q_des is None:
-                continue
-
-            p_cur = data.xpos[body_id]         
-            q_cur = data.xquat[body_id]         
-
-            # Reorder q_des to [w, x, y, z]
-            q_des_wxyz = np.empty(4)
-            q_des_wxyz[0] = q_des[3]
-            q_des_wxyz[1:] = q_des[:3]
-
-            # Position error
-            pos_err = np.linalg.norm(p_cur - p_des)
-
-            # Rotation error: angle between quaternions
-            R_des = R.from_quat(q_des_wxyz)
-            R_cur = R.from_quat(q_cur)
-            R_rel = R_des * R_cur.inv()
-            rot_err = R_rel.magnitude()  # radians
-
-            pos_err_sum += pos_err
-            rot_err_sum += rot_err
-
-    return pos_err_sum + rot_err_sum
+        
 
 
 def create_prop_dict(part, val):
@@ -215,8 +195,8 @@ def create_prop_dict(part, val):
                          ("distal_exo3", None, "pos"): to_}
         
     elif part == "distal_exo3":
-        property_dict = {("distal_exo3", "geom", "fromto"): val}
-        
+        property_dict = {("distal_exo3", "geom", "fromto"): val,
+                         ("dist_H_dummy", None, "pos"): to_}  
     return property_dict
 
 
@@ -265,12 +245,21 @@ def cem_sampling(link, L_min, L_max,
     
 def len_to_fromto(length, link):
     """
-    Converts a length to a 'fromto' string format.
+    Converts a length to a 'fromto' array format.
     """
-    if link == "distal_exo2":
-        ux, uy, uz = -0.148523, 0.0, 0.988909            # unit vector
-        x, y, z = ux*length, uy*length, uz*length
-        return [0,0,0,round(x,6),round(y,6),round(z,6)]
+    if link == "proxi_exo1":
+        ux, uy, uz = (-.012, 0, .005)/ np.linalg.norm([-.012, 0, .005])            
+    elif link == "proxi_exo2":
+        ux, uy, uz = (0.013, 0, .052)/ np.linalg.norm([0.013, 0, .052])
+    elif link == "distal_exo1":
+        ux, uy, uz = (.014, 0, .013) / np.linalg.norm([.014, 0, .013])  
+    elif link == "distal_exo2":
+        ux, uy, uz = (-0.015, 0, 0.1) / np.linalg.norm([-0.015, 0, .1])
+    elif link == "distal_exo3":
+        ux, uy, uz = (-0.007, 0, -.05) / np.linalg.norm([-0.007, 0, -0.05])
+    
+    x, y, z = ux*length, uy*length, uz*length
+    return [0,0,0,round(x,6),round(y,6),round(z,6)]
 
 if __name__ == "__main__":
     best_param, best_len, best_score = cem_sampling(link="distal_exo2", L_min=0.05, L_max=0.13)

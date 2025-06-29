@@ -67,7 +67,8 @@ def _parse_pose_block(cell: str):
 model = mujoco.MjModel.from_xml_path(MODEL_XML)
 data  = mujoco.MjData(model)
 mujoco.mj_forward(model, data)   
-# Map body IDs once for speed
+
+# Mappings
 TRAKSTAR_TO_BID = {col: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body)
         for col, body in TRAKSTAR_TO_BODY.items()}
 TRAKSTAR_TO_MOCAPID = {}
@@ -143,9 +144,32 @@ row = 0
 sim_t = 0.0
 F_cmd = {}
 T_cmd = {}
-sensor_forces = []
-time_plt = []
-sensor_id = model.sensor(name="tip_force").id
+sensor_forces = [] 
+torque_R_distal = []
+torque_H_distal = []
+time_interval = []
+
+def plot_sensor_data(sensor_data, y_label):
+    data = np.asarray(sensor_data, dtype=float)
+    print(data.shape)
+    if data.ndim == 1:                      
+        x = np.arange(len(data))
+        plt.plot(x, data)
+        plt.ylabel(y_label)
+    elif data.ndim == 2 and data.shape[1] == 3:   
+        x = np.arange(data.shape[0])
+        suffix = ("_x", "_y", "_z")
+        for i in range(3):
+            plt.plot(x, data[:, i], label=y_label + suffix[i])
+        plt.ylabel(y_label)
+    else:
+        raise ValueError("sensor_data must be shape (N,) or (N,3)")
+
+    plt.xlabel("Time (s)")
+    plt.title(f"{y_label} vs Time")
+    plt.legend()
+    plt.savefig(y_label.replace(" ", "_") + ".png")
+    plt.close()
 
 while viewer.is_running() and row < len(df):
     # Advance row pointer whenever we've passed that timestamp
@@ -167,13 +191,17 @@ while viewer.is_running() and row < len(df):
     for _ in range(5):
         mujoco.mj_step(model, data)
     sim_t = data.time
-
-    f = data.sensordata[sensor_id]
-    sensor_forces.append(f)
-    time_plt.append(sim_t)
+    if row > 5:
+        f = data.sensor("tip_force").data 
+        td_R = data.sensor("dist_R").data
+        td_H = data.sensor("dist_H").data
+        sensor_forces.append(f[0])
+        torque_R_distal.append(td_R[1])
+        torque_H_distal.append(td_H[1])
+        time_interval.append(sim_t)
 
     viewer.sync()
-    time.sleep(0.01)
+   # time.sleep(0.01)
 
     
     """if row % 100 == 0:
@@ -182,10 +210,17 @@ while viewer.is_running() and row < len(df):
             p_cur = data.xpos[body_id]
           #  print(f"{tracker}: p_des = {p_des}, p_cur = {p_cur}")
             print(p_des == p_cur)"""
-    
+
 viewer.close()
-plt.plot(range(len(sensor_forces)), sensor_forces)
-plt.xlabel("Time (s)")
-plt.ylabel("Sensor Force (N)")
-plt.title("Sensor Force Over Time")
-plt.savefig("sensor_force_plot.png")
+#plot_sensor_data(sensor_forces, "Force on Fingertip")
+#plot_sensor_data(torque_R_distal, "Torque on Distal Site")
+
+x = range(len(torque_H_distal))
+
+plt.plot(x, torque_R_distal, label="R")
+plt.plot(x, torque_H_distal, label="H")
+plt.legend()
+plt.savefig("neinei.png")
+plt.close()
+
+

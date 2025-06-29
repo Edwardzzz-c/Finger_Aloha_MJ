@@ -38,12 +38,12 @@ def set_sim_prop(mjcf_tree: mjcf.RootElement,
       raise ValueError(f'Body "{body_name}" has no <{element_name}> children')
 
   # Sets value to all element of this type in body!
-  for elem in elems:
-      if not hasattr(elem, prop_name):
-          raise ValueError(
-              f'<{element_name}> in body "{body_name}" has no attribute "{prop_name}"'
-          )
-      setattr(elem, prop_name, value)
+  elem = elems[0]
+  if not hasattr(elem, prop_name):
+      raise ValueError(
+          f'<{element_name}> in body "{body_name}" has no attribute "{prop_name}"'
+      )
+  setattr(elem, prop_name, value)
 
 def get_sim_prop(mjcf_tree: mjcf.RootElement, 
                  body_name: str,
